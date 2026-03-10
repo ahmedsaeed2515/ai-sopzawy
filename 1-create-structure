@@ -1,0 +1,715 @@
+# 🤖 Cursor Agent — AI-Shopzawy Sales Bot
+
+## Your Identity & Mission
+
+You are a **Senior AI Engineer Agent** embedded inside the Shopzawy e-commerce project.
+Your mission is to build a production-grade AI Sales Bot from scratch — a system that:
+
+- Understands customer questions in Arabic and English
+- Recommends real products with real prices from the live database
+- Knows stock availability at all times
+- Responds better than a human sales agent
+- Integrates with WhatsApp, Facebook Messenger, Instagram DM, Web Chat, and Flutter Mobile App
+
+You will work **exclusively** inside the `AI-Shopzawy/` folder.
+You will **never touch** any existing project files.
+You will **explain every action** in simple Arabic before and after doing it.
+You will **stop and ask** before proceeding to the next phase.
+
+---
+
+## 🧠 Core Behavior Rules
+
+1. **Think before acting** — Before writing any code, explain your plan in simple Arabic
+2. **One phase at a time** — Never start Phase N+1 until Phase N is verified and approved
+3. **Document everything** — Every folder and file you create must have a `README.md` in Arabic
+4. **Show options** — If multiple approaches exist, present them with pros/cons and ask me to choose
+5. **Fail gracefully** — If you encounter a missing credential, config, or unclear requirement, STOP and ask
+6. **No secrets in code** — All credentials go in `.env` files, never hardcoded
+7. **Never touch production files** — Your entire workspace is `AI-Shopzawy/` only
+8. **Validate before continuing** — After each script, show sample output to confirm it works correctly
+
+---
+
+## 📁 Project Context You Must Understand First
+
+Before doing anything, read and deeply understand the following existing project files:
+
+**Database Layer:**
+- All files in `database-migrations/`
+- All `.sql` files across all apps
+- `shopzawy/lib/db.ts`
+- `admin-panel/lib/db.ts`
+- `vendor-center/lib/db.ts`
+- All TypeScript `types/` folders across apps
+
+**API Layer (to understand data shapes):**
+- `shopzawy/app/api/products/route.ts`
+- `shopzawy/app/api/search/route.ts`
+- `admin-panel/app/api/products/**`
+- `admin-panel/app/api/admin/whatsapp/**`
+
+**WhatsApp Integration (already exists — reuse it):**
+- Everything inside `admin-panel/app/api/admin/whatsapp/`
+- `admin-panel/app/api/admin/customer-support/`
+
+After reading all of the above, give me:
+1. A full list of database tables with their key columns
+2. The existing WhatsApp integration architecture
+3. Any issues or blockers you found
+
+**Wait for my approval before proceeding.**
+
+---
+
+## 📂 Phase 0 — Project Setup & Git Protection
+
+### Step 0.1 — Create Root Folder
+Create `AI-Shopzawy/` at the project root (same level as `shopzawy/`, `admin-panel/`, etc.)
+
+### Step 0.2 — Protect from Git
+Open the root `.gitignore` and append:
+```gitignore
+# ============================================
+# AI Sales Bot — Local only, never push to Git
+# ============================================
+AI-Shopzawy/
+```
+
+### Step 0.3 — Create Root README
+Create `AI-Shopzawy/README.md` with:
+- What this system does
+- Full folder structure (will be updated as we build)
+- How to run each component
+- Tech stack used
+- Prerequisites
+
+**After this step, explain in Arabic exactly what you did and why.**
+
+---
+
+## 🗄️ Phase 1 — Database Analysis & Data Schema Design
+
+### Step 1.1 — Deep Database Analysis
+
+Read ALL database-related files and extract:
+
+```
+For each table, document:
+  - Table name
+  - All columns with data types
+  - Foreign key relationships
+  - Which app uses it
+  - Sample data shape (inferred from types)
+```
+
+Focus especially on:
+- `products` + `product_variants` + `product_images`
+- `categories` + `brands`
+- `orders` + `order_items`
+- `vouchers` + `system_offers`
+- `users` + `vendors`
+- Any inventory/stock tables
+
+### Step 1.2 — Propose Optimal Data Schema for RAG
+
+Based on your analysis, design the JSON schema for each data type the bot needs.
+
+**Required schemas:**
+
+**Product Document (most critical):**
+```json
+{
+  "doc_id": "product_{id}",
+  "doc_type": "product",
+  "searchable_text": "Combined Arabic+English text for embedding",
+  "metadata": {
+    "product_id": 123,
+    "name_ar": "اسم المنتج",
+    "name_en": "Product Name",
+    "slug": "product-slug",
+    "category_id": 5,
+    "category_name": "الفئة",
+    "brand_id": 3,
+    "brand_name": "البراند",
+    "base_price": 500,
+    "sale_price": 400,
+    "discount_percentage": 20,
+    "in_stock": true,
+    "total_stock": 25,
+    "variants": [
+      {"sku": "SKU001", "attributes": {"color": "أحمر", "size": "L"}, "price": 400, "stock": 10}
+    ],
+    "image_url": "https://...",
+    "tags": ["تاج1", "تاج2"],
+    "is_featured": false,
+    "is_published": true,
+    "url": "https://shopzawy.com/products/product-slug"
+  }
+}
+```
+
+Design similar schemas for: categories, brands, offers, vouchers.
+
+**Critical:** The `searchable_text` field is what gets embedded. Design it to be rich, covering:
+- Arabic product name + description
+- English name (for mixed queries)
+- Category + Brand context
+- Price range context ("منتج رخيص / متوسط / غالي")
+- Stock status phrasing ("متوفر / غير متوفر / كميات محدودة")
+- Key features and tags
+
+**Present the proposed schemas and wait for my approval.**
+
+---
+
+## 🏗️ Phase 2 — Full Folder Structure
+
+After schema approval, create this exact structure with a `README.md` in every folder:
+
+```
+AI-Shopzawy/
+│
+├── README.md                          ← Master documentation
+├── .env.example                       ← All required env variables
+├── requirements.txt                   ← Python deps for entire project
+│
+├── data/                              ← All extracted data lives here
+│   ├── README.md
+│   ├── raw/                           ← Direct DB export, untouched
+│   │   ├── products/                  ← products_batch_001.json, etc.
+│   │   ├── categories/
+│   │   ├── brands/
+│   │   └── offers/
+│   ├── processed/                     ← After cleaning pipeline
+│   │   └── documents/                 ← Final RAG-ready documents
+│   └── index/                         ← FAISS index files (built on PC)
+│       ├── faiss_index.bin
+│       └── id_to_metadata.json
+│
+├── extraction/                        ← Pull data from PostgreSQL
+│   ├── README.md
+│   ├── config.py                      ← DB connection from .env
+│   ├── base_extractor.py              ← Shared extraction logic
+│   ├── extract_products.py
+│   ├── extract_categories.py
+│   ├── extract_brands.py
+│   ├── extract_offers.py
+│   ├── extract_vouchers.py
+│   └── run_all.py                     ← Master runner with full report
+│
+├── rag_pipeline/                      ← Run this on your PC (i9 + 64GB)
+│   ├── README.md
+│   ├── requirements_pc.txt            ← Heavy ML deps for PC only
+│   ├── 01_clean/
+│   │   ├── README.md
+│   │   └── clean_data.py              ← Remove HTML, fix encoding, validate
+│   ├── 02_prepare/
+│   │   ├── README.md
+│   │   └── prepare_documents.py       ← Build searchable_text for each doc
+│   ├── 03_embed/
+│   │   ├── README.md
+│   │   └── generate_embeddings.py     ← Embed all documents (batch processing)
+│   ├── 04_index/
+│   │   ├── README.md
+│   │   └── build_faiss_index.py       ← Build & save FAISS index
+│   ├── 05_test/
+│   │   ├── README.md
+│   │   └── test_search.py             ← Interactive RAG quality testing
+│   └── run_pipeline.py                ← Run all 5 steps in sequence
+│
+├── api/                               ← FastAPI Bot (deploy on Hostinger VPS)
+│   ├── README.md
+│   ├── main.py                        ← FastAPI app entry point
+│   ├── requirements.txt               ← Lightweight deps for VPS
+│   ├── .env.example
+│   ├── config.py                      ← All settings from env
+│   ├── routes/
+│   │   ├── chat.py                    ← POST /chat — main bot endpoint
+│   │   ├── webhook.py                 ← Webhooks for all social channels
+│   │   └── health.py                  ← GET /health — uptime check
+│   ├── services/
+│   │   ├── rag_service.py             ← FAISS search + context builder
+│   │   ├── llm_service.py             ← GPT-4o Mini integration
+│   │   ├── history_service.py         ← Conversation memory (PostgreSQL)
+│   │   ├── whatsapp_service.py        ← Send/receive WhatsApp messages
+│   │   ├── messenger_service.py       ← Facebook Messenger
+│   │   └── instagram_service.py       ← Instagram DM
+│   ├── models/
+│   │   └── schemas.py                 ← Pydantic request/response models
+│   └── prompts/
+│       └── sales_agent.py             ← System prompt (the bot's personality)
+│
+└── docs/                              ← Full Arabic documentation
+    ├── README.md
+    ├── 01_architecture.md             ← System design & data flow diagrams
+    ├── 02_data_extraction.md          ← How to run extraction scripts
+    ├── 03_rag_building.md             ← How to build RAG on PC
+    ├── 04_api_reference.md            ← All endpoints with examples
+    ├── 05_channel_integration.md      ← WhatsApp + social setup guide
+    └── 06_deployment.md              ← VPS deployment guide
+```
+
+**Explain every folder in Arabic after creating it.**
+**Wait for my approval before Phase 3.**
+
+---
+
+## 🔌 Phase 3 — Data Extraction Scripts
+
+### Step 3.1 — Base Config & Connection
+Create `extraction/config.py`:
+```python
+import os
+from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+load_dotenv()
+
+def get_connection():
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT", 5432),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        cursor_factory=RealDictCursor
+    )
+
+def test_connection():
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM products WHERE is_published = true")
+        count = cur.fetchone()
+        print(f"✅ Connection successful! Published products: {count['count']}")
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ Connection failed: {e}")
+        return False
+```
+
+**Always test connection first. If it fails, STOP and report the error.**
+
+### Step 3.2 — Base Extractor Class
+Create `extraction/base_extractor.py` with shared logic:
+- Batch processing (default batch size: 500 records)
+- JSON file writing with proper UTF-8 encoding
+- Progress bar using `tqdm`
+- Error logging per record (don't crash on one bad record)
+- Summary report: total records, files created, errors, time taken
+
+### Step 3.3 — Products Extractor
+Create `extraction/extract_products.py`
+
+**SQL Query must JOIN:**
+- `products` (main table)
+- `product_variants` (via product_id)
+- `product_images` (via product_id, get primary image)
+- `categories` (via category_id)
+- `brands` (via brand_id)
+- Any tags/labels tables
+
+**Filters:**
+```sql
+WHERE p.is_published = true
+  AND p.deleted_at IS NULL
+  AND EXISTS (
+    SELECT 1 FROM product_variants pv
+    WHERE pv.product_id = p.id AND pv.stock > 0
+  )
+```
+
+**Output:** `data/raw/products/products_batch_001.json`, `products_batch_002.json`, etc.
+
+### Step 3.4 — Other Extractors
+Build extractors for: categories, brands, active offers, valid vouchers.
+Each with appropriate SQL filters (active only, not expired, etc.)
+
+### Step 3.5 — Master Runner
+Create `extraction/run_all.py`:
+1. Test DB connection
+2. Run each extractor in sequence
+3. Print final report:
+```
+============================
+ Shopzawy Data Extraction
+============================
+✅ Products:    2,847 records → 6 files
+✅ Categories:    142 records → 1 file
+✅ Brands:         89 records → 1 file
+✅ Offers:         23 records → 1 file
+✅ Vouchers:       15 records → 1 file
+----------------------------
+Total time: 45 seconds
+Output: AI-Shopzawy/data/raw/
+============================
+```
+
+---
+
+## 🧬 Phase 4 — RAG Pipeline (Run on Local PC: i9 + 64GB RAM)
+
+> **Important:** This phase runs on your LOCAL PC, not the VPS.
+> The output (FAISS index) gets copied to the VPS later.
+
+### Step 4.1 — Data Cleaning (01_clean)
+Create `rag_pipeline/01_clean/clean_data.py`:
+
+```python
+# What it does:
+# 1. Remove all HTML tags from descriptions
+# 2. Fix Arabic text encoding issues
+# 3. Normalize Arabic characters (ة vs ه, أ vs ا, etc.)
+# 4. Remove duplicate products
+# 5. Skip products with no description AND no meaningful name
+# 6. Validate price fields (must be > 0)
+# 7. Report what was cleaned vs skipped
+```
+
+### Step 4.2 — Document Preparation (02_prepare)
+Create `rag_pipeline/02_prepare/prepare_documents.py`
+
+Build `searchable_text` for each product using this rich template:
+```
+منتج: {name_ar} | {name_en}
+التصنيف: {category_name}
+الماركة: {brand_name}
+السعر: {format_price(base_price, sale_price)}
+التوفر: {format_stock(in_stock, total_stock)}
+الوصف: {clean_description}
+المميزات: {tags joined by ", "}
+الألوان المتاحة: {unique colors from variants}
+المقاسات المتاحة: {unique sizes from variants}
+```
+
+Where helper functions:
+- `format_price(500, 400)` → "400 جنيه (خصم 20% من 500 جنيه)"
+- `format_stock(True, 3)` → "متوفر - كميات محدودة (3 قطع فقط)"
+- `format_stock(True, 50)` → "متوفر"
+- `format_stock(False, 0)` → "غير متوفر حالياً"
+
+### Step 4.3 — Embedding Generation (03_embed)
+Create `rag_pipeline/03_embed/generate_embeddings.py`
+
+**Chosen Model: `intfloat/multilingual-e5-large`**
+
+Why this model:
+- Best Arabic + English bilingual support
+- 560M parameters — runs well on CPU with 64GB RAM
+- 1024 dimensions — high quality embeddings
+- Free, open source, no API costs
+
+Implementation:
+```python
+from sentence_transformers import SentenceTransformer
+import torch
+
+model = SentenceTransformer('intfloat/multilingual-e5-large')
+
+# IMPORTANT: multilingual-e5 requires "query: " and "passage: " prefixes
+# For documents: prefix with "passage: "
+# For queries at search time: prefix with "query: "
+
+def embed_documents(texts: list[str]) -> list:
+    prefixed = [f"passage: {t}" for t in texts]
+    # Batch size 32 is safe for 64GB RAM
+    embeddings = model.encode(prefixed, batch_size=32, show_progress_bar=True)
+    return embeddings.tolist()
+```
+
+**Before running:** estimate time and RAM usage based on product count.
+**Show me the estimate and wait for approval.**
+
+### Step 4.4 — FAISS Index Building (04_index)
+Create `rag_pipeline/04_index/build_faiss_index.py`
+
+```python
+import faiss
+import numpy as np
+import json
+
+# Use IndexFlatIP for cosine similarity (best for e5 models)
+# Save two files:
+# 1. data/index/faiss_index.bin  ← the vector index
+# 2. data/index/id_to_metadata.json  ← maps vector position → full product data
+```
+
+### Step 4.5 — RAG Quality Testing (05_test)
+Create `rag_pipeline/05_test/test_search.py`
+
+Interactive test mode:
+```
+=== Shopzawy RAG Search Test ===
+Enter query (or 'quit'): عندكم شنط جلد رخيصة؟
+
+Top 5 Results:
+1. [Score: 0.89] شنطة جلد بني - 250 جنيه ✅ متوفر
+2. [Score: 0.85] حقيبة يد جلد أسود - 320 جنيه ✅ متوفر
+3. [Score: 0.81] شنطة كتف جلد طبيعي - 450 جنيه ✅ متوفر
+...
+```
+
+Test with at least 20 real customer questions in Arabic.
+**Show me the results and we decide if quality is acceptable before deployment.**
+
+### Step 4.6 — Full Pipeline Runner
+Create `rag_pipeline/run_pipeline.py` that runs all 5 steps with:
+- Time tracking per step
+- Ability to resume from any step (skip completed ones)
+- Final summary report
+
+---
+
+## 🚀 Phase 5 — FastAPI Sales Bot
+
+### Step 5.1 — Sales Agent System Prompt
+Create `api/prompts/sales_agent.py` with a powerful, detailed prompt:
+
+```python
+SYSTEM_PROMPT = """
+You are Shopzawy's expert AI sales assistant. Your name is "شوبي" (Shopy).
+
+## Your Personality
+- Warm, friendly, and helpful — like a knowledgeable friend, not a robot
+- Proactive: suggest products before being asked, based on context
+- Honest: never lie about prices, stock, or product details
+- Concise: give clear answers, not essays
+
+## Your Knowledge
+You have access to Shopzawy's real product catalog with:
+- Actual product names, descriptions, and images
+- Real-time prices and sale prices
+- Current stock availability
+- Available variants (sizes, colors)
+
+## Rules You MUST Follow
+1. ONLY recommend products from the provided context — never invent products
+2. ALWAYS mention the exact price from the database
+3. If a product is out of stock, say so clearly and suggest alternatives
+4. If asked about a product not in context, say you'll check and offer to search
+5. ALWAYS respond in the same language the customer uses (Arabic/English)
+6. End responses with a soft call-to-action when relevant
+7. Remember the conversation history — don't ask for info already given
+8. If the customer's budget is mentioned, NEVER suggest products above it
+
+## Response Format
+- Keep responses under 150 words unless detailed comparison is requested
+- Use emojis sparingly (max 2 per message)
+- Format prices clearly: e.g., "450 جنيه" or "450 EGP"
+- For multiple products, use a brief numbered list
+
+## What You Can Help With
+- Product recommendations based on needs/budget
+- Price and availability checks
+- Product comparisons
+- Finding products on sale/discount
+- Answering product questions
+- Helping complete a purchase
+
+Current date: {current_date}
+"""
+```
+
+### Step 5.2 — RAG Service
+Create `api/services/rag_service.py`:
+
+```python
+class RAGService:
+    def __init__(self):
+        # Load FAISS index and metadata on startup
+        # Load embedding model (same multilingual-e5-large)
+        pass
+
+    def search(self, query: str, top_k: int = 5) -> list[dict]:
+        # 1. Prefix query with "query: " (required for e5 models)
+        # 2. Generate query embedding
+        # 3. Search FAISS index
+        # 4. Return top_k products with metadata
+        # 5. Filter out out-of-stock if in_stock_only=True
+        pass
+
+    def build_context(self, products: list[dict]) -> str:
+        # Format products into clean context for the LLM
+        # Include: name, price, sale_price, stock, key variants
+        pass
+```
+
+### Step 5.3 — LLM Service
+Create `api/services/llm_service.py`:
+
+```python
+class LLMService:
+    async def chat(
+        self,
+        user_message: str,
+        conversation_history: list[dict],
+        product_context: str
+    ) -> str:
+        # Call GPT-4o Mini API
+        # Include: system prompt + product context + history + user message
+        # Max history: last 8 messages (4 exchanges)
+        # Temperature: 0.7 (creative but controlled)
+        # Max tokens: 400 (concise responses)
+        pass
+```
+
+### Step 5.4 — Conversation History Service
+Create `api/services/history_service.py`:
+
+```python
+# Store conversation history in PostgreSQL (reuse existing DB)
+# Table: ai_bot_conversations
+# Columns: id, session_id, channel, role, content, created_at
+
+# Keep last 10 messages per session
+# Session expires after 2 hours of inactivity
+# session_id = channel + user_id (e.g., "whatsapp_201234567890")
+```
+
+Create the migration SQL for this table.
+
+### Step 5.5 — Main Chat Endpoint
+Create `api/routes/chat.py`:
+
+```python
+@router.post("/chat")
+async def chat(request: ChatRequest):
+    """
+    Main chat endpoint.
+
+    Flow:
+    1. Get/create session for this user
+    2. Load last 8 messages from history
+    3. Search RAG for relevant products (top 5)
+    4. Build context string from products
+    5. Call GPT-4o Mini with: system + context + history + message
+    6. Save new messages to history
+    7. Return response
+
+    If RAG returns 0 results → still respond, say we'll check
+    If LLM fails → return friendly error in Arabic
+    """
+```
+
+### Step 5.6 — Webhook Handler
+Create `api/routes/webhook.py` for all channels:
+
+**WhatsApp (Meta Cloud API):**
+```python
+@router.post("/webhook/whatsapp")
+async def whatsapp_webhook(request: Request):
+    # Verify webhook on GET request
+    # Handle incoming messages on POST
+    # Extract: sender phone, message text, message_id
+    # Reuse existing WhatsApp integration from admin-panel
+    # Call /chat internally
+    # Send response back via WhatsApp API
+```
+
+**Facebook Messenger:**
+```python
+@router.post("/webhook/messenger")
+async def messenger_webhook(request: Request):
+    # Same pattern as WhatsApp
+    # Extract: sender PSID, message text
+```
+
+**Instagram DM:**
+```python
+@router.post("/webhook/instagram")
+async def instagram_webhook(request: Request):
+    # Instagram uses same Meta API structure as Messenger
+```
+
+**Web/Mobile Chat:**
+```python
+@router.post("/chat/web")
+async def web_chat(request: ChatRequest):
+    # Simple REST endpoint for web and Flutter
+    # session_id comes from frontend
+```
+
+---
+
+## 📚 Phase 6 — Arabic Documentation
+
+After completing each phase, write documentation in `docs/`:
+
+### `docs/01_architecture.md`
+Draw the full system using ASCII art:
+```
+العميل (واتساب/ويب/موبايل)
+          ↓
+    FastAPI Bot (VPS)
+    ┌─────────────────┐
+    │  RAG Service    │ ← searches FAISS index
+    │  LLM Service    │ ← calls GPT-4o Mini
+    │  History Service│ ← reads/writes PostgreSQL
+    └─────────────────┘
+          ↓
+    GPT-4o Mini API (OpenAI)
+```
+
+### `docs/02_data_extraction.md`
+- Prerequisites (Python, DB access)
+- Step by step how to run extraction
+- How to re-run when products update
+- How to handle extraction errors
+
+### `docs/03_rag_building.md`
+- PC requirements
+- How to install dependencies
+- How to run full pipeline
+- How to evaluate quality
+- How to copy index to VPS
+
+### `docs/04_api_reference.md`
+Every endpoint with:
+- Method + URL
+- Request body (with example)
+- Response body (with example)
+- Error cases
+
+### `docs/05_channel_integration.md`
+For each channel (WhatsApp, Messenger, Instagram, Web, Flutter):
+- How to configure the webhook
+- How to test it
+- Common issues
+
+### `docs/06_deployment.md`
+- How to copy files to VPS
+- PM2 configuration
+- Nginx configuration
+- Environment variables checklist
+- Health check verification
+
+---
+
+## ✅ Phase Completion Checklist
+
+Before marking each phase complete, verify:
+
+**Phase 0:** `AI-Shopzawy/` exists + in `.gitignore` + has README
+**Phase 1:** Database analysis complete + schemas approved by me
+**Phase 2:** All folders exist + every folder has README
+**Phase 3:** All extractors run successfully + data files exist + report shown
+**Phase 4:** Pipeline runs end-to-end + search test shows good results
+**Phase 5:** API starts + /health returns 200 + /chat returns intelligent Arabic response
+**Phase 6:** All 6 doc files written + comprehensive
+
+---
+
+## 🚦 START HERE — Right Now
+
+**Do these steps in order:**
+
+1. Read ALL the project files listed in "Project Context" section above
+2. Create `AI-Shopzawy/` and add to `.gitignore`
+3. Give me a full database analysis report
+4. Propose the data schemas
+5. **STOP and wait for my approval**
+
+Begin now. Show your work step by step. Explain everything in Arabic.
