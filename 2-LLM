@@ -1,0 +1,734 @@
+# 🧪 Cursor Agent — AI Model Comparison Lab
+# Location: aiShopzawy/model-comparison/
+
+---
+
+## WHO YOU ARE
+
+You are a **Senior AI Systems Engineer** with deep expertise in:
+- RAG (Retrieval-Augmented Generation) pipelines
+- LLM API integration and benchmarking
+- Real-time web applications
+- Performance profiling and metrics
+
+You work **autonomously** — you think, plan, adapt, and execute without stopping.
+If you find a better approach than what's described, **implement it and explain why**.
+You never wait for permission. You never stop mid-task.
+The only time you pause is to ask for **API keys** — nothing else.
+
+---
+
+## MISSION
+
+Build a **professional AI Model Comparison Laboratory** inside `aiShopzawy/model-comparison/`.
+
+This lab will:
+1. Connect to the **existing RAG file** already built in `aiShopzawy/`
+2. Send the same query to **5 AI models simultaneously**
+3. Display all responses **in real-time** on a beautiful dashboard
+4. Capture **deep metrics** for each model
+5. Help decide which model is best for the Shopzawy Sales Bot
+
+---
+
+## STEP 0 — BEFORE WRITING A SINGLE LINE OF CODE
+
+### 0.1 — Inspect the RAG File First
+
+Navigate into `aiShopzawy/` and deeply examine:
+- What vector database is being used? (Chroma / FAISS / other)
+- What is the exact schema of each document?
+- What fields are returned? (text, metadata, images, prices, stock, etc.)
+- How is the search function called? What parameters does it take?
+- What does a sample result look like?
+
+Open the actual RAG code files and read them carefully.
+Do NOT assume — read the real code.
+
+### 0.2 — Build a RAG Inspection Report
+
+Before building anything, output this report in your response:
+
+```
+=== RAG FILE INSPECTION REPORT ===
+
+Vector DB:         [Chroma / FAISS / other]
+Embedding Model:   [name]
+Collection Name:   [name]
+Total Documents:   [count]
+
+Document Schema:
+{
+  "id": "...",
+  "text": "...",
+  [list every field you found]
+}
+
+Sample Search Result:
+[paste one real result]
+
+Images Returned:   [Yes/No — field name if yes]
+Price Field:       [field name]
+Stock Field:       [field name]
+Product URL:       [field name]
+
+Search Function Signature:
+def search(query: str, ...) -> [return type]
+
+Issues Found:
+- [anything that might cause problems]
+
+Suggested Improvements:
+- [anything you'd do better]
+===================================
+```
+
+**Build this report from reading the actual code. Then proceed.**
+
+---
+
+## STEP 1 — PROJECT STRUCTURE
+
+Create this exact structure inside `aiShopzawy/model-comparison/`:
+
+```
+model-comparison/
+│
+├── README.md                    ← Full Arabic explanation of the lab
+├── .env.example                 ← All required API keys
+├── requirements.txt             ← All Python dependencies
+│
+├── backend/
+│   ├── main.py                  ← FastAPI app (entry point)
+│   ├── config.py                ← Settings from .env
+│   ├── rag_adapter.py           ← Connects to existing RAG (DO NOT modify RAG)
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── base_model.py        ← Abstract base class all models inherit
+│   │   ├── groq_model.py        ← Groq API
+│   │   ├── gemini_model.py      ← Google Gemini API
+│   │   └── huggingface_model.py ← HuggingFace (handles multiple HF models)
+│   ├── benchmark/
+│   │   ├── runner.py            ← Runs all models in parallel
+│   │   ├── metrics.py           ← Calculates all performance metrics
+│   │   └── evaluator.py        ← Scores response quality automatically
+│   └── routers/
+│       ├── compare.py           ← POST /compare — main endpoint
+│       ├── stream.py            ← GET /stream/{session_id} — SSE streaming
+│       └── history.py           ← GET /history — past comparisons
+│
+├── frontend/
+│   ├── index.html               ← Single file app (no build step needed)
+│   ├── style.css
+│   └── app.js
+│
+└── results/
+    └── sessions/                ← JSON files, one per comparison session
+```
+
+---
+
+## STEP 2 — THE 5 MODELS
+
+### Model 1: Groq — LLaMA 3.3 70B
+```python
+MODEL_ID = "llama-3.3-70b-versatile"
+PROVIDER = "groq"
+# Known for: extreme speed, good Arabic
+# API: api.groq.com
+```
+
+### Model 2: Google Gemini Flash 2.0
+```python
+MODEL_ID = "gemini-2.0-flash"
+PROVIDER = "gemini"
+# Known for: free tier, fast, multilingual
+# API: generativelanguage.googleapis.com
+```
+
+### Model 3: HuggingFace — Qwen2.5-7B-Instruct
+```python
+MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
+PROVIDER = "huggingface"
+# Known for: best Arabic quality in open source
+```
+
+### Model 4: HuggingFace — Mistral-7B-Instruct-v0.3
+```python
+MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.3"
+PROVIDER = "huggingface"
+# Known for: strong reasoning, decent Arabic
+```
+
+### Model 5: HuggingFace — ALLaM-7B-Instruct
+```python
+MODEL_ID = "ALLaM-AI/ALLaM-7B-Instruct-preview"
+PROVIDER = "huggingface"
+# Known for: built specifically for Arabic language
+# Made by: Saudi Data and AI Authority (SDAIA)
+```
+
+> **Note to Agent:** If ALLaM is not available on HF Inference API, replace with
+> `google/gemma-2-9b-it` and document why you changed it.
+
+---
+
+## STEP 3 — BASE MODEL CLASS
+
+Create `backend/models/base_model.py`:
+
+```python
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any
+import time
+
+@dataclass
+class ModelMetrics:
+    model_id: str
+    provider: str
+    
+    # Timing
+    time_to_first_token: float = 0.0    # seconds until response starts
+    total_response_time: float = 0.0    # total seconds
+    
+    # Tokens
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    tokens_per_second: float = 0.0
+    
+    # RAG
+    rag_results_count: int = 0
+    rag_search_time: float = 0.0
+    context_length_chars: int = 0
+    
+    # Response
+    response_text: str = ""
+    response_length_chars: int = 0
+    response_length_words: int = 0
+    
+    # Quality scores (0-10)
+    relevance_score: float = 0.0        # Did it answer the question?
+    accuracy_score: float = 0.0         # Are product details correct?
+    arabic_quality_score: float = 0.0  # Quality of Arabic language
+    hallucination_detected: bool = False # Did it invent products?
+    
+    # Status
+    success: bool = True
+    error_message: str = ""
+    
+    # Images from RAG
+    product_images: list[str] = field(default_factory=list)
+    
+    # Raw API response (for debugging)
+    raw_response: dict = field(default_factory=dict)
+
+
+class BaseModel(ABC):
+    def __init__(self, model_id: str, provider: str, api_key: str):
+        self.model_id = model_id
+        self.provider = provider
+        self.api_key = api_key
+    
+    @abstractmethod
+    async def generate(self, prompt: str, context: str, history: list) -> ModelMetrics:
+        """Generate response and return full metrics"""
+        pass
+    
+    def build_messages(self, system_prompt: str, context: str, 
+                       user_query: str, history: list) -> list:
+        """Build message array for chat completion"""
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in history[-4:]:  # last 2 exchanges
+            messages.append(msg)
+        messages.append({
+            "role": "user", 
+            "content": f"Context from product database:\n{context}\n\nCustomer question: {user_query}"
+        })
+        return messages
+```
+
+---
+
+## STEP 4 — RAG ADAPTER
+
+Create `backend/rag_adapter.py`:
+
+```python
+# This file connects to the EXISTING RAG without modifying it.
+# Read the actual RAG code in aiShopzawy/ and write the adapter to match.
+
+import sys
+import os
+import time
+
+# Add parent directory to path to import existing RAG
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../'))
+
+class RAGAdapter:
+    def __init__(self):
+        # Import and initialize the existing RAG
+        # YOU must read the actual RAG code and write this correctly
+        pass
+    
+    def search(self, query: str, top_k: int = 5) -> dict:
+        """
+        Returns:
+        {
+            "documents": [...],      # list of matching product texts
+            "metadatas": [...],      # list of metadata dicts
+            "images": [...],         # list of image URLs (if available)
+            "search_time": 0.123,    # seconds
+            "results_count": 5,
+            "raw_results": {...}     # complete raw results
+        }
+        """
+        start = time.time()
+        
+        # Call the actual RAG search here
+        # Adapt based on what you found in Step 0
+        raw = self._call_existing_rag(query, top_k)
+        
+        return {
+            "documents": self._extract_documents(raw),
+            "metadatas": self._extract_metadatas(raw),
+            "images": self._extract_images(raw),
+            "search_time": time.time() - start,
+            "results_count": len(self._extract_documents(raw)),
+            "raw_results": raw
+        }
+    
+    def build_context_string(self, rag_results: dict) -> str:
+        """
+        Converts RAG results into a rich context string for the LLM.
+        Include: product names, prices, stock, descriptions, variants.
+        Exclude: raw IDs, internal fields.
+        Format it to maximize LLM understanding.
+        """
+        context_parts = []
+        
+        for i, (doc, meta) in enumerate(zip(
+            rag_results["documents"], 
+            rag_results["metadatas"]
+        )):
+            # Build rich product entry
+            # Adapt field names based on your actual RAG schema
+            context_parts.append(f"Product {i+1}:\n{doc}")
+        
+        return "\n\n---\n\n".join(context_parts)
+```
+
+> **Critical:** Do NOT modify any files in the parent `aiShopzawy/` folder.
+> Only read from them. The adapter pattern keeps things clean.
+
+---
+
+## STEP 5 — PARALLEL BENCHMARK RUNNER
+
+Create `backend/benchmark/runner.py`:
+
+```python
+import asyncio
+import time
+from typing import AsyncIterator
+
+class BenchmarkRunner:
+    def __init__(self, models: list, rag_adapter):
+        self.models = models
+        self.rag = rag_adapter
+    
+    async def run_comparison(
+        self, 
+        query: str,
+        session_id: str
+    ) -> AsyncIterator[dict]:
+        """
+        Runs all models in parallel, yields results as they complete.
+        Uses asyncio.gather() for true parallelism.
+        """
+        
+        # Step 1: Search RAG once, share results with all models
+        rag_results = self.rag.search(query, top_k=5)
+        context = self.rag.build_context_string(rag_results)
+        
+        yield {
+            "event": "rag_complete",
+            "data": {
+                "search_time": rag_results["search_time"],
+                "results_count": rag_results["results_count"],
+                "images": rag_results["images"],
+                "session_id": session_id
+            }
+        }
+        
+        # Step 2: Run all models simultaneously
+        tasks = [
+            model.generate(
+                prompt=query,
+                context=context,
+                history=[]
+            )
+            for model in self.models
+        ]
+        
+        # Yield results as each model completes (not waiting for all)
+        for coro in asyncio.as_completed(tasks):
+            metrics = await coro
+            metrics.rag_results_count = rag_results["results_count"]
+            metrics.rag_search_time = rag_results["search_time"]
+            metrics.context_length_chars = len(context)
+            metrics.product_images = rag_results["images"]
+            
+            yield {
+                "event": "model_complete",
+                "data": metrics.__dict__,
+                "session_id": session_id
+            }
+```
+
+---
+
+## STEP 6 — METRICS & AUTO-EVALUATOR
+
+Create `backend/benchmark/evaluator.py`:
+
+```python
+class ResponseEvaluator:
+    """
+    Automatically scores each model's response.
+    No human needed — uses simple heuristics.
+    """
+    
+    def evaluate(self, response: str, query: str, 
+                 rag_products: list, language: str = "ar") -> dict:
+        return {
+            "relevance_score": self._score_relevance(response, query),
+            "accuracy_score": self._score_accuracy(response, rag_products),
+            "arabic_quality_score": self._score_arabic(response),
+            "hallucination_detected": self._detect_hallucination(response, rag_products),
+            "has_price": self._mentions_price(response),
+            "has_stock_info": self._mentions_stock(response),
+            "response_sentiment": self._analyze_sentiment(response),
+            "call_to_action_present": self._has_cta(response),
+            "word_count": len(response.split()),
+            "conciseness_score": self._score_conciseness(response),
+        }
+    
+    def _score_relevance(self, response: str, query: str) -> float:
+        # Check if response addresses the query keywords
+        query_keywords = set(query.lower().split())
+        response_lower = response.lower()
+        matches = sum(1 for kw in query_keywords if kw in response_lower)
+        return min(10.0, (matches / max(len(query_keywords), 1)) * 10)
+    
+    def _score_accuracy(self, response: str, rag_products: list) -> float:
+        # Check if prices/names mentioned in response exist in RAG results
+        # Score goes down if model mentions products not in context
+        score = 10.0
+        # Extract any numbers that look like prices from response
+        # Check they match RAG metadata
+        # Deduct points for each mismatch
+        return score
+    
+    def _detect_hallucination(self, response: str, rag_products: list) -> bool:
+        # Simple check: did the model mention product names NOT in RAG results?
+        # Returns True if hallucination likely detected
+        return False
+    
+    def _score_arabic(self, response: str) -> float:
+        # Count Arabic characters vs total
+        arabic_chars = sum(1 for c in response if '\u0600' <= c <= '\u06ff')
+        total_chars = len(response.replace(' ', ''))
+        if total_chars == 0:
+            return 0.0
+        ratio = arabic_chars / total_chars
+        # Penalize if response is mostly non-Arabic when query was Arabic
+        return round(ratio * 10, 1)
+```
+
+---
+
+## STEP 7 — FASTAPI BACKEND
+
+Create `backend/main.py`:
+
+```python
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import json
+
+app = FastAPI(title="Shopzawy Model Comparison Lab")
+
+app.add_middleware(CORSMiddleware, allow_origins=["*"], 
+                   allow_methods=["*"], allow_headers=["*"])
+
+# Mount frontend
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+@app.get("/")
+async def root():
+    return HTMLResponse(open("frontend/index.html").read())
+
+@app.post("/compare")
+async def compare(request: CompareRequest):
+    """
+    Triggers comparison across all 5 models.
+    Returns session_id immediately.
+    Client connects to /stream/{session_id} for real-time results.
+    """
+    session_id = generate_session_id()
+    asyncio.create_task(runner.run_and_store(request.query, session_id))
+    return {"session_id": session_id, "status": "started"}
+
+@app.get("/stream/{session_id}")
+async def stream(session_id: str):
+    """
+    Server-Sent Events endpoint.
+    Client subscribes here to receive results as each model completes.
+    """
+    async def event_generator():
+        async for event in runner.stream_results(session_id):
+            yield f"data: {json.dumps(event)}\n\n"
+        yield "data: {\"event\": \"complete\"}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
+
+@app.get("/history")
+async def history():
+    """Returns all past comparison sessions"""
+    pass
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "models_loaded": len(runner.models)}
+```
+
+---
+
+## STEP 8 — FRONTEND DASHBOARD
+
+Create `frontend/index.html` — a single-file professional dashboard.
+
+### Design Requirements:
+- **Dark theme** — professional, easy on eyes
+- **5 model cards** displayed in a responsive grid (2-3 per row on desktop, 1 on mobile)
+- **Real-time streaming** — results appear as each model finishes, not all at once
+- **Product images** from RAG displayed at the top (shared for all models)
+- **Metrics bar** under each response showing all performance data
+
+### Each Model Card Must Show:
+
+```
+┌─────────────────────────────────────────┐
+│  🟢 Groq — LLaMA 3.3 70B               │
+│  ════════════════════════════════════   │
+│                                         │
+│  [Product Images from RAG]              │
+│                                         │
+│  Response:                              │
+│  ┌─────────────────────────────────┐   │
+│  │ عندنا شنطة جلد بني بـ 350 جنيه │   │
+│  │ متوفرة ✅...                     │   │  ← Streaming text appears live
+│  └─────────────────────────────────┘   │
+│                                         │
+│  ⏱️ Performance Metrics                 │
+│  ┌─────────────────────────────────┐   │
+│  │ First Token:    0.38s           │   │
+│  │ Total Time:     1.24s           │   │
+│  │ Input Tokens:   847             │   │
+│  │ Output Tokens:  156             │   │
+│  │ Speed:          126 tok/s       │   │
+│  │ RAG Search:     0.12s           │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  📊 Quality Scores                      │
+│  Relevance:   ████████░░ 8.2/10        │
+│  Accuracy:    █████████░ 9.1/10        │
+│  Arabic:      ███████░░░ 7.5/10        │
+│  Hallucination: ✅ None detected        │
+│  Has Price:   ✅  Has Stock: ✅         │
+│                                         │
+│  📦 RAG Context Used                   │
+│  5 products found • 0.12s search       │
+└─────────────────────────────────────────┘
+```
+
+### Main Interface:
+
+```
+┌──────────────────────────────────────────────┐
+│  🔬 Shopzawy AI Model Comparison Lab         │
+│                                              │
+│  ┌──────────────────────────────────┐  ┌──┐ │
+│  │ اسأل سؤال عن المنتجات...        │  │▶│ │
+│  └──────────────────────────────────┘  └──┘ │
+│                                              │
+│  Quick Tests:                                │
+│  [شنط جلد] [موبايل رخيص] [عروض اليوم]      │
+│                                              │
+│  RAG Status: ✅ Connected • 2,847 products  │
+└──────────────────────────────────────────────┘
+
+[Model Cards Grid — 5 cards, results stream in real-time]
+
+┌─────────────────────────────────────────────┐
+│  📊 Head-to-Head Summary Table              │
+│  [Shows all 5 models ranked by each metric]│
+└─────────────────────────────────────────────┘
+```
+
+### JavaScript Requirements:
+- Use `EventSource` API for Server-Sent Events
+- Animate text streaming character by character
+- Show loading spinner per card while waiting
+- Color-code scores (green > 8, yellow 5-8, red < 5)
+- Show "winner" badge on fastest/best model
+- Allow copying any response to clipboard
+- Export full comparison as JSON
+
+---
+
+## STEP 9 — ENVIRONMENT SETUP
+
+Create `.env.example`:
+```env
+# ============================================================
+# Shopzawy AI Model Comparison Lab — API Keys
+# ============================================================
+
+# Groq API (free at console.groq.com)
+GROQ_API_KEY=gsk_...
+
+# Google Gemini (free at aistudio.google.com)
+GEMINI_API_KEY=AIza...
+
+# HuggingFace (free at huggingface.co/settings/tokens)
+HUGGINGFACE_API_KEY=hf_...
+
+# RAG Configuration (auto-detected from aiShopzawy/)
+RAG_PATH=../                    # Path to existing RAG
+RAG_COLLECTION_NAME=            # Fill after inspecting RAG
+
+# Server
+PORT=8002
+HOST=0.0.0.0
+```
+
+Create `requirements.txt`:
+```
+fastapi==0.115.0
+uvicorn==0.30.0
+python-dotenv==1.0.0
+groq==0.11.0
+google-generativeai==0.8.0
+huggingface-hub==0.24.0
+httpx==0.27.0
+asyncio==3.4.3
+pydantic==2.8.0
+sentence-transformers==3.0.0
+```
+
+---
+
+## STEP 10 — HOW TO RUN
+
+Create `README.md` with full Arabic instructions:
+
+### ما تحتاجه قبل التشغيل (Your Checklist):
+
+```
+□ GROQ_API_KEY     — اعمل account على console.groq.com (مجاني)
+□ GEMINI_API_KEY   — اعمل account على aistudio.google.com (مجاني)  
+□ HUGGINGFACE_API_KEY — اعمل account على huggingface.co (مجاني)
+□ الـ RAG file موجود ومشغال في aiShopzawy/
+□ Python 3.10+ مثبت
+```
+
+### تشغيل المشروع:
+```bash
+cd aiShopzawy/model-comparison
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy and fill API keys
+cp .env.example .env
+# Edit .env with your keys
+
+# Run
+cd backend
+uvicorn main:app --reload --port 8002
+
+# Open browser
+# http://localhost:8002
+```
+
+---
+
+## AGENT THINKING GUIDELINES
+
+Before implementing each component, ask yourself:
+
+1. **Did I read the actual RAG code?** — Never assume its schema
+2. **Is there a simpler way?** — Prefer simplicity over complexity
+3. **Will this work offline?** — The RAG is local, don't add unnecessary network calls
+4. **Am I modifying existing files?** — Never. Only read from `aiShopzawy/`
+5. **Are the metrics meaningful?** — Each metric must tell the user something actionable
+
+If you discover the RAG returns data in a format not covered by this prompt:
+- **Adapt the code to match reality**
+- **Document what you found**
+- **Never break existing RAG functionality**
+
+If a HuggingFace model is unavailable via Inference API:
+- Try the `huggingface_hub.InferenceClient` instead
+- If still unavailable, replace with next best Arabic model
+- Document the substitution in README
+
+---
+
+## SUCCESS CRITERIA
+
+The lab is complete when:
+
+```
+✅ All 5 model cards appear on the dashboard
+✅ Typing a query and clicking Run shows live streaming in all 5 cards
+✅ Each card shows: response text + all timing metrics + quality scores
+✅ Product images from RAG appear at the top
+✅ Summary comparison table appears after all models complete
+✅ No errors in browser console
+✅ Works on mobile screen
+✅ /health endpoint returns all 5 models as loaded
+```
+
+---
+
+## START NOW — NO STOPPING
+
+**Execute in this order:**
+
+1. Read ALL existing RAG files in `aiShopzawy/` — write the inspection report
+2. Create the full folder structure
+3. Build `rag_adapter.py` based on real RAG code
+4. Build all 5 model classes
+5. Build the benchmark runner
+6. Build the FastAPI backend
+7. Build the frontend dashboard
+8. Test end-to-end with one query
+9. Fix any issues
+10. Write README in Arabic
+
+**No pausing. No asking. Just build and document.**
+The only exception: if you need API keys that aren't in `.env` yet,
+list them clearly and wait.
+
+Begin immediately with Step 0 — RAG inspection.
